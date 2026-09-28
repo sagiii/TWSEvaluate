@@ -37,8 +37,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -48,6 +50,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.sagiii.twsevaluate.audio.WaveformExtractor
 import com.sagiii.twsevaluate.data.EvaluationMode
 import com.sagiii.twsevaluate.data.ModeSpan
 import com.sagiii.twsevaluate.data.Session
@@ -55,6 +58,9 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,27 +74,62 @@ fun SessionDetailScreen(
 
     var playingPath by remember { mutableStateOf<String?>(null) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var positionMs by remember { mutableStateOf(0) }
+    var durationMs by remember { mutableStateOf(0) }
+
     DisposableEffect(Unit) {
         onDispose { mediaPlayer?.release() }
     }
 
-    fun toggleAudioPlayback(path: String) {
-        if (playingPath == path) {
-            mediaPlayer?.release()
-            mediaPlayer = null
-            playingPath = null
-            return
+    // 再生中は100msごとに再生位置を拾ってシークバーに反映する
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            positionMs = mediaPlayer?.currentPosition ?: 0
+            delay(100)
         }
+    }
+
+    fun loadTrack(path: String, autoPlay: Boolean) {
         mediaPlayer?.release()
         mediaPlayer = MediaPlayer().apply {
             setDataSource(path)
             setOnCompletionListener {
-                playingPath = null
+                isPlaying = false
+                positionMs = durationMs
             }
             prepare()
-            start()
         }
         playingPath = path
+        durationMs = mediaPlayer?.duration ?: 0
+        positionMs = 0
+        if (autoPlay) {
+            mediaPlayer?.start()
+            isPlaying = true
+        } else {
+            isPlaying = false
+        }
+    }
+
+    fun togglePlayback(path: String) {
+        if (playingPath != path) {
+            loadTrack(path, autoPlay = true)
+            return
+        }
+        if (isPlaying) {
+            mediaPlayer?.pause()
+            isPlaying = false
+        } else {
+            mediaPlayer?.start()
+            isPlaying = true
+        }
+    }
+
+    fun seekTrack(path: String, fraction: Float) {
+        if (playingPath != path) loadTrack(path, autoPlay = false)
+        val target = (durationMs * fraction).toInt()
+        mediaPlayer?.seekTo(target)
+        positionMs = target
     }
 
     fun playVideo(path: String) {
@@ -152,16 +193,16 @@ fun SessionDetailScreen(
             if (session.conferenceAudioPaths.isNotEmpty()) {
                 item { Text("会議録音", style = MaterialTheme.typography.titleMedium) }
                 items(session.conferenceAudioPaths) { path ->
-                    val isPlaying = playingPath == path
-                    Button(
-                        onClick = { toggleAudioPlayback(path) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        colors = if (isPlaying) ButtonDefaults.filledTonalButtonColors() else ButtonDefaults.buttonColors(),
-                    ) {
-                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text("会議録音を再生 (${File(path).name})")
-                    }
+                    val isCurrent = playingPath == path
+                    ConferenceAudioRow(
+                        path = path,
+                        isCurrent = isCurrent,
+                        isPlaying = isCurrent && isPlaying,
+                        positionMs = if (isCurrent) positionMs else 0,
+                        durationMs = if (isCurrent) durationMs else 0,
+                        onTogglePlayback = { togglePlayback(path) },
+                        onSeek = { fraction -> seekTrack(path, fraction) },
+                    )
                 }
                 item { Spacer(modifier = Modifier.size(16.dp)) }
             }
@@ -200,6 +241,46 @@ fun SessionDetailScreen(
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) { Text("キャンセル") }
             },
+        )
+    }
+}
+
+@Composable
+private fun ConferenceAudioRow(
+    path: String,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    positionMs: Int,
+    durationMs: Int,
+    onTogglePlayback: () -> Unit,
+    onSeek: (Float) -> Unit,
+) {
+    val amplitudes by produceState(initialValue = FloatArray(0), path) {
+        value = withContext(Dispatchers.IO) { WaveformExtractor.extract(File(path)) }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Text(File(path).name, style = MaterialTheme.typography.bodyMedium)
+        Spacer(modifier = Modifier.size(4.dp))
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            IconButton(onClick = onTogglePlayback) {
+                Icon(
+                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "一時停止" else "再生",
+                )
+            }
+            WaveformSeekBar(
+                amplitudes = amplitudes,
+                progress = if (isCurrent && durationMs > 0) positionMs.toFloat() / durationMs else 0f,
+                onSeek = onSeek,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        val shownPosition = if (isCurrent) positionMs.toLong() else 0L
+        val shownDuration = if (isCurrent) durationMs.toLong() else 0L
+        Text(
+            "${formatMmSs(shownPosition)} / ${formatMmSs(shownDuration)}",
+            style = MaterialTheme.typography.labelSmall,
         )
     }
 }
