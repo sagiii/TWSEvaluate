@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -24,8 +25,10 @@ import com.sagiii.twsevaluate.data.Session
 import com.sagiii.twsevaluate.data.SessionRepository
 import com.sagiii.twsevaluate.ui.EvaluationSessionScreen
 import com.sagiii.twsevaluate.ui.PhotoCaptureScreen
+import com.sagiii.twsevaluate.ui.SessionDetailScreen
 import com.sagiii.twsevaluate.ui.SessionListScreen
 import com.sagiii.twsevaluate.ui.theme.TwsEvaluateTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,11 +47,13 @@ class MainActivity : ComponentActivity() {
 private const val ROUTE_SESSION_LIST = "sessionList"
 private const val ROUTE_CAPTURE = "capture"
 private const val ROUTE_EVALUATION = "evaluation/{sessionId}?photo={photo}"
+private const val ROUTE_DETAIL = "detail/{sessionId}"
 
 @Composable
 fun TwsEvaluateApp() {
     val context = LocalContext.current
     val repository = remember { SessionRepository(context.applicationContext) }
+    val scope = rememberCoroutineScope()
     var sessions by remember { mutableStateOf<List<Session>>(emptyList()) }
     var refreshKey by remember { mutableStateOf(0) }
 
@@ -62,7 +67,7 @@ fun TwsEvaluateApp() {
             SessionListScreen(
                 sessions = sessions,
                 onNewSession = { navController.navigate(ROUTE_CAPTURE) },
-                onOpenSession = { /* セッション詳細は後続コミットで実装 */ },
+                onOpenSession = { session -> navController.navigate("detail/${session.id}") },
             )
         }
         composable(ROUTE_CAPTURE) {
@@ -94,6 +99,26 @@ fun TwsEvaluateApp() {
                     navController.popBackStack(ROUTE_SESSION_LIST, inclusive = false)
                 },
             )
+        }
+        composable(
+            route = ROUTE_DETAIL,
+            arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId").orEmpty()
+            val session = sessions.find { it.id == sessionId }
+            if (session != null) {
+                SessionDetailScreen(
+                    session = session,
+                    onDelete = {
+                        scope.launch {
+                            repository.delete(sessionId)
+                            refreshKey++
+                            navController.popBackStack(ROUTE_SESSION_LIST, inclusive = false)
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
     }
 }
