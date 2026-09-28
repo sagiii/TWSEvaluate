@@ -4,3 +4,7 @@
 
 - [x] 対応済み (2026-09-29): セッション詳細画面の会議録音再生に、波形オーバーレイ付きのシークバー(タップ/ドラッグでシーク可)を追加。`WaveformExtractor` / `WaveformSeekBar` / `SessionDetailScreen`。実機で再生位置追従を確認済み。
 
+# 2: READMEを作成してほしい
+
+プロジェクトのREADMEがまだ無い。諸々の機能が落ち着いてからでOK。
+
