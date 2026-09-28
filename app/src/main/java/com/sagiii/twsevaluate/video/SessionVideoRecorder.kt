@@ -49,8 +49,9 @@ class SessionVideoRecorder(
                 cameraProvider = provider
                 val recorder = Recorder.Builder()
                     .setQualitySelector(
-                        QualitySelector.from(Quality.HD, FallbackStrategy.higherQualityOrLowerThan(Quality.HD)),
+                        QualitySelector.from(Quality.SD, FallbackStrategy.higherQualityOrLowerThan(Quality.SD)),
                     )
+                    .setTargetVideoEncodingBitRate(TARGET_VIDEO_BITRATE_BPS)
                     .build()
                 val capture = VideoCapture.withOutput(recorder)
                 videoCapture = capture
@@ -108,5 +109,11 @@ class SessionVideoRecorder(
         cameraProvider?.unbindAll()
         cameraProvider = null
         videoCapture = null
+    }
+
+    companion object {
+        // テスト風景の記録用途であり画質の厳密さは不要なため、SD解像度+低めのビット
+        // レートでファイルサイズを抑える(HD/自動ビットレートだと95秒で140MB超になった)。
+        private const val TARGET_VIDEO_BITRATE_BPS = 2_500_000
     }
 }
