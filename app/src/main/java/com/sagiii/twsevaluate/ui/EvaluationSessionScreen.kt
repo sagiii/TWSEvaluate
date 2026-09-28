@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
@@ -63,13 +64,17 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.sagiii.twsevaluate.audio.EvaluationSessionService
 import com.sagiii.twsevaluate.audio.ScoState
 import com.sagiii.twsevaluate.data.EvaluationMode
 import com.sagiii.twsevaluate.data.ModeSpan
 import com.sagiii.twsevaluate.data.Session
 import com.sagiii.twsevaluate.data.SessionRepository
+import com.sagiii.twsevaluate.video.SessionVideoRecorder
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -87,6 +92,7 @@ fun EvaluationSessionScreen(
     val requiredPermissions = remember {
         buildList {
             add(Manifest.permission.RECORD_AUDIO)
+            add(Manifest.permission.CAMERA)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(Manifest.permission.BLUETOOTH_CONNECT)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -138,6 +144,49 @@ fun EvaluationSessionScreen(
     var isRecordingConference by remember { mutableStateOf(false) }
     var monitorEnabled by remember { mutableStateOf(true) }
     var musicTitle by remember { mutableStateOf<String?>(null) }
+
+    // --- 動画録画(アウトカメラ+端末内蔵マイク) ---
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val videoRecorder = remember(lifecycleOwner) { SessionVideoRecorder(context, lifecycleOwner) }
+    var videoSegmentIndex by remember { mutableStateOf(0) }
+    val videoFiles = remember { mutableStateListOf<String>() }
+    var isRecordingVideo by remember { mutableStateOf(false) }
+
+    fun startVideoSegment() {
+        val file = File(repository.sessionDir(sessionId), "video_${videoSegmentIndex}.mp4")
+        videoSegmentIndex++
+        isRecordingVideo = true
+        videoRecorder.startNewSegment(file) { path, _ ->
+            isRecordingVideo = false
+            if (path != null) videoFiles.add(path)
+        }
+    }
+
+    LaunchedEffect(permissionsGranted) {
+        if (permissionsGranted) startVideoSegment()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        var isFirstStart = true
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    videoRecorder.releaseCamera()
+                    isRecordingVideo = false
+                }
+                Lifecycle.Event.ON_START -> {
+                    if (isFirstStart) {
+                        isFirstStart = false
+                    } else if (permissionsGranted && !isRecordingVideo) {
+                        startVideoSegment()
+                    }
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     fun elapsedNow(): Long = SystemClock.elapsedRealtime() - sessionStartElapsed
 
@@ -206,24 +255,27 @@ fun EvaluationSessionScreen(
         modeTimeline.add(ModeSpan(selectedMode, currentSegmentStartMs, now))
         stopCurrentModeSideEffects()
         service?.stopMusic()
-        scope.launch {
-            repository.save(
-                Session(
-                    id = sessionId,
-                    createdAtEpochMs = System.currentTimeMillis() - now,
-                    photoPath = photoPath,
-                    videoPath = null,
-                    conferenceAudioPaths = conferenceFiles.toList(),
-                    modeTimeline = modeTimeline.toList(),
-                ),
-            )
-            onFinished()
+        // 最後の動画セグメントのファイルが確定するのを待ってから保存する
+        videoRecorder.stopFinal {
+            scope.launch {
+                repository.save(
+                    Session(
+                        id = sessionId,
+                        createdAtEpochMs = System.currentTimeMillis() - now,
+                        photoPath = photoPath,
+                        videoPaths = videoFiles.toList(),
+                        conferenceAudioPaths = conferenceFiles.toList(),
+                        modeTimeline = modeTimeline.toList(),
+                    ),
+                )
+                onFinished()
+            }
         }
     }
 
     Scaffold(
         topBar = {
-            EvaluationTopBar(photoPath = photoPath, onClose = { finish() })
+            EvaluationTopBar(photoPath = photoPath, isRecordingVideo = isRecordingVideo, onClose = { finish() })
         },
     ) { padding ->
         Column(
@@ -280,23 +332,36 @@ fun EvaluationSessionScreen(
 }
 
 @Composable
-private fun EvaluationTopBar(photoPath: String, onClose: () -> Unit) {
+private fun EvaluationTopBar(photoPath: String, isRecordingVideo: Boolean, onClose: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        val bitmap = remember(photoPath) {
-            runCatching { BitmapFactory.decodeFile(photoPath)?.asImageBitmap() }.getOrNull()
-        }
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            bitmap?.let {
-                Image(bitmap = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val bitmap = remember(photoPath) {
+                runCatching { BitmapFactory.decodeFile(photoPath)?.asImageBitmap() }.getOrNull()
+            }
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                bitmap?.let {
+                    Image(bitmap = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+            }
+            if (isRecordingVideo) {
+                Spacer(modifier = Modifier.size(8.dp))
+                Icon(
+                    Icons.Default.FiberManualRecord,
+                    contentDescription = "録画中",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(modifier = Modifier.size(4.dp))
+                Text("REC", style = MaterialTheme.typography.labelMedium)
             }
         }
         IconButton(onClick = onClose) {

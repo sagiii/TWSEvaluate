@@ -117,7 +117,7 @@ private fun SessionRow(session: Session, onClick: () -> Unit) {
                     Icon(Icons.Default.Mic, contentDescription = "会議モード使用", modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                 }
-                if (session.videoPath != null) {
+                if (session.videoPaths.isNotEmpty()) {
                     Icon(
                         Icons.Default.FiberManualRecord,
                         contentDescription = null,
