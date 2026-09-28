@@ -7,10 +7,12 @@ import android.app.Service
 import android.content.Intent
 import android.os.Binder
 import android.os.Build
+import android.net.Uri
 import android.os.IBinder
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import com.sagiii.twsevaluate.R
+import com.sagiii.twsevaluate.music.MusicPlayer
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,9 +35,12 @@ class EvaluationSessionService : Service() {
         private set
     lateinit var conferenceRecorder: ConferenceRecorder
         private set
+    lateinit var musicPlayer: MusicPlayer
+        private set
 
     val scoState: StateFlow<ScoState> get() = scoController.state
     val conferenceLevel: StateFlow<Float> get() = conferenceRecorder.level
+    val musicIsPlaying: StateFlow<Boolean> get() = musicPlayer.isPlaying
 
     inner class LocalBinder : Binder() {
         fun getService(): EvaluationSessionService = this@EvaluationSessionService
@@ -45,6 +50,7 @@ class EvaluationSessionService : Service() {
         super.onCreate()
         scoController = BluetoothScoController(applicationContext)
         conferenceRecorder = ConferenceRecorder()
+        musicPlayer = MusicPlayer(applicationContext)
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
     }
@@ -54,9 +60,20 @@ class EvaluationSessionService : Service() {
     override fun onDestroy() {
         conferenceRecorder.stop()
         scoController.stop()
+        musicPlayer.release()
         serviceScope.cancel()
         super.onDestroy()
     }
+
+    fun playMusic(uri: Uri, title: String) {
+        musicPlayer.play(uri, title)
+    }
+
+    fun pauseMusic() = musicPlayer.pause()
+
+    fun resumeMusic() = musicPlayer.resume()
+
+    fun stopMusic() = musicPlayer.release()
 
     fun startConferenceMode() {
         scoController.start()

@@ -20,7 +20,7 @@ data class Session(
     val createdAtEpochMs: Long,
     val photoPath: String,
     val videoPath: String? = null,
-    val conferenceAudioPath: String? = null,
+    val conferenceAudioPaths: List<String> = emptyList(),
     val modeTimeline: List<ModeSpan> = emptyList(),
 ) {
     val durationMs: Long
