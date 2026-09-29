@@ -41,6 +41,7 @@ class EvaluationSessionService : Service() {
     val scoState: StateFlow<ScoState> get() = scoController.state
     val conferenceLevel: StateFlow<Float> get() = conferenceRecorder.level
     val musicIsPlaying: StateFlow<Boolean> get() = musicPlayer.isPlaying
+    val musicDurationMs: StateFlow<Int> get() = musicPlayer.durationMs
 
     inner class LocalBinder : Binder() {
         fun getService(): EvaluationSessionService = this@EvaluationSessionService
@@ -74,6 +75,10 @@ class EvaluationSessionService : Service() {
     fun resumeMusic() = musicPlayer.resume()
 
     fun stopMusic() = musicPlayer.release()
+
+    fun seekMusic(positionMs: Int) = musicPlayer.seekTo(positionMs)
+
+    fun musicPositionMs(): Int = musicPlayer.currentPositionMs()
 
     fun startConferenceMode() {
         scoController.start()

@@ -48,6 +48,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -85,6 +86,7 @@ import com.sagiii.twsevaluate.video.SessionVideoRecorder
 import com.sagiii.twsevaluate.util.PhotoBitmapLoader
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -214,6 +216,16 @@ fun EvaluationSessionScreen(
     }
     val musicIsPlaying by produceState(initialValue = false, service) {
         service?.musicIsPlaying?.collect { value = it }
+    }
+    val musicDurationMs by produceState(initialValue = 0, service) {
+        service?.musicDurationMs?.collect { value = it }
+    }
+    var musicPositionMs by remember { mutableStateOf(0) }
+    LaunchedEffect(musicIsPlaying, service) {
+        while (musicIsPlaying) {
+            musicPositionMs = service?.musicPositionMs() ?: 0
+            delay(150)
+        }
     }
 
     fun stopCurrentModeSideEffects() {
@@ -360,9 +372,15 @@ fun EvaluationSessionScreen(
                 EvaluationMode.MUSIC -> MusicModeContent(
                     isPlaying = musicIsPlaying,
                     title = musicTitle,
+                    positionMs = musicPositionMs,
+                    durationMs = musicDurationMs,
                     onPickFile = { audioPicker.launch(arrayOf("audio/*")) },
                     onPlayPause = {
                         if (musicIsPlaying) service?.pauseMusic() else service?.resumeMusic()
+                    },
+                    onSeek = { positionMs ->
+                        service?.seekMusic(positionMs)
+                        musicPositionMs = positionMs
                     },
                     onPlayBundledTrack = { track ->
                         val uri = Uri.parse("android.resource://${context.packageName}/${track.resId}")
@@ -447,8 +465,11 @@ private fun EvaluationTopBar(photoPath: String, isRecordingVideo: Boolean, onClo
 private fun MusicModeContent(
     isPlaying: Boolean,
     title: String?,
+    positionMs: Int,
+    durationMs: Int,
     onPickFile: () -> Unit,
     onPlayPause: () -> Unit,
+    onSeek: (Int) -> Unit,
     onPlayBundledTrack: (BundledTrack) -> Unit,
 ) {
     var selectedGenre by remember { mutableStateOf(BundledTracks.genreLabels.first().first) }
@@ -482,11 +503,21 @@ private fun MusicModeContent(
         Text(title ?: "曲が選択されていません", style = MaterialTheme.typography.bodyLarge)
         Spacer(modifier = Modifier.size(12.dp))
         if (title != null) {
-            Button(onClick = onPlayPause) {
-                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null)
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(if (isPlaying) "一時停止" else "再生")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onPlayPause) {
+                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null)
+                }
+                Slider(
+                    value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat().coerceAtLeast(0f)),
+                    valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
+                    onValueChange = { onSeek(it.toInt()) },
+                    modifier = Modifier.weight(1f),
+                )
             }
+            Text(
+                "${formatMmSs(positionMs.toLong())} / ${formatMmSs(durationMs.toLong())}",
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
     }
 }
@@ -545,4 +576,9 @@ private fun queryDisplayName(context: Context, uri: Uri): String {
         if (cursor.moveToFirst() && nameIndex >= 0) return cursor.getString(nameIndex)
     }
     return uri.lastPathSegment ?: "選択した音源"
+}
+
+private fun formatMmSs(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    return "%02d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 }

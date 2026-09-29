@@ -22,6 +22,9 @@ class MusicPlayer(private val context: Context) {
     private val _currentTitle = MutableStateFlow<String?>(null)
     val currentTitle: StateFlow<String?> = _currentTitle
 
+    private val _durationMs = MutableStateFlow(0)
+    val durationMs: StateFlow<Int> = _durationMs
+
     fun play(uri: Uri, title: String) {
         release()
         mediaPlayer = MediaPlayer().apply {
@@ -37,6 +40,7 @@ class MusicPlayer(private val context: Context) {
             start()
         }
         _currentTitle.value = title
+        _durationMs.value = mediaPlayer?.duration ?: 0
         _isPlaying.value = true
     }
 
@@ -50,9 +54,16 @@ class MusicPlayer(private val context: Context) {
         _isPlaying.value = true
     }
 
+    fun seekTo(positionMs: Int) {
+        mediaPlayer?.seekTo(positionMs)
+    }
+
+    fun currentPositionMs(): Int = mediaPlayer?.currentPosition ?: 0
+
     fun release() {
         mediaPlayer?.release()
         mediaPlayer = null
         _isPlaying.value = false
+        _durationMs.value = 0
     }
 }
