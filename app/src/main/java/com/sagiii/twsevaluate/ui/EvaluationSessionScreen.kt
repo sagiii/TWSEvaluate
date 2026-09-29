@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -37,9 +39,11 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -73,6 +77,8 @@ import com.sagiii.twsevaluate.data.EvaluationMode
 import com.sagiii.twsevaluate.data.ModeSpan
 import com.sagiii.twsevaluate.data.Session
 import com.sagiii.twsevaluate.data.SessionRepository
+import com.sagiii.twsevaluate.music.BundledTrack
+import com.sagiii.twsevaluate.music.BundledTracks
 import com.sagiii.twsevaluate.video.ConferenceClip
 import com.sagiii.twsevaluate.video.ConferenceVideoMuxer
 import com.sagiii.twsevaluate.video.SessionVideoRecorder
@@ -358,6 +364,11 @@ fun EvaluationSessionScreen(
                     onPlayPause = {
                         if (musicIsPlaying) service?.pauseMusic() else service?.resumeMusic()
                     },
+                    onPlayBundledTrack = { track ->
+                        val uri = Uri.parse("android.resource://${context.packageName}/${track.resId}")
+                        musicTitle = track.title
+                        service?.playMusic(uri, track.title)
+                    },
                 )
                 EvaluationMode.CONFERENCE -> ConferenceModeContent(
                     scoState = scoState,
@@ -438,8 +449,30 @@ private fun MusicModeContent(
     title: String?,
     onPickFile: () -> Unit,
     onPlayPause: () -> Unit,
+    onPlayBundledTrack: (BundledTrack) -> Unit,
 ) {
+    var selectedGenre by remember { mutableStateOf(BundledTracks.genreLabels.first().first) }
     Column {
+        Text("同梱の試聴用BGM(ジャンル別)", style = MaterialTheme.typography.titleSmall)
+        Spacer(modifier = Modifier.size(8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(BundledTracks.genreLabels) { (genre, label) ->
+                FilterChip(
+                    selected = selectedGenre == genre,
+                    onClick = { selectedGenre = genre },
+                    label = { Text(label) },
+                )
+            }
+        }
+        Spacer(modifier = Modifier.size(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BundledTracks.tracksFor(selectedGenre).forEachIndexed { index, track ->
+                OutlinedButton(onClick = { onPlayBundledTrack(track) }) {
+                    Text("${index + 1}曲目")
+                }
+            }
+        }
+        Spacer(modifier = Modifier.size(16.dp))
         Button(onClick = onPickFile, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.FolderOpen, contentDescription = null)
             Spacer(modifier = Modifier.size(8.dp))
