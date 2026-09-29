@@ -282,6 +282,7 @@ fun EvaluationSessionScreen(
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri != null) {
+            musicPositionMs = 0
             val title = queryDisplayName(context, uri)
             musicTitle = title
             musicCurrentUri = uri
@@ -395,6 +396,7 @@ fun EvaluationSessionScreen(
                         musicPositionMs = positionMs
                     },
                     onPlayBundledTrack = { track ->
+                        musicPositionMs = 0
                         val uri = Uri.parse("android.resource://${context.packageName}/${track.resId}")
                         musicTitle = track.title
                         musicCurrentUri = uri
