@@ -14,7 +14,13 @@ object BundledTracks {
         genre("pop", "ポップ風", R.raw.music_pop_1, R.raw.music_pop_2, R.raw.music_pop_3),
         genre("rock", "ロック風", R.raw.music_rock_1, R.raw.music_rock_2, R.raw.music_rock_3),
         genre("jazz", "ジャズ風", R.raw.music_jazz_1, R.raw.music_jazz_2, R.raw.music_jazz_3),
-        genre("classical", "クラシック風", R.raw.music_classical_1, R.raw.music_classical_2, R.raw.music_classical_3),
+        genreNamed(
+            "classical",
+            "クラシック風",
+            R.raw.music_classical_1 to "純粋ピアノ",
+            R.raw.music_classical_2 to "純粋弦楽",
+            R.raw.music_classical_3 to "フルオーケストラ",
+        ),
         genre("edm", "EDM風", R.raw.music_edm_1, R.raw.music_edm_2, R.raw.music_edm_3),
         genre("lofi", "Lo-fi風", R.raw.music_lofi_1, R.raw.music_lofi_2, R.raw.music_lofi_3),
         genre("ambient", "アンビエント風", R.raw.music_ambient_1, R.raw.music_ambient_2, R.raw.music_ambient_3),
@@ -33,4 +39,10 @@ object BundledTracks {
             BundledTrack(id, label, "$label 2", r2),
             BundledTrack(id, label, "$label 3", r3),
         )
+
+    private fun genreNamed(
+        id: String,
+        label: String,
+        vararg tracks: Pair<Int, String>,
+    ): List<BundledTrack> = tracks.map { (resId, title) -> BundledTrack(id, label, title, resId) }
 }

@@ -20,9 +20,9 @@
 | music_jazz_1.m4a | https://pixabay.com/music/modern-jazz-jazz-song-sunny-cafe-nu-jazz-587413/ |
 | music_jazz_2.m4a | https://pixabay.com/music/modern-jazz-jazz-piano-578722/ |
 | music_jazz_3.m4a | https://pixabay.com/music/modern-jazz-cool-jazz-598432/ |
-| music_classical_1.m4a | https://pixabay.com/music/modern-classical-classical-classical-piano-590653/ |
-| music_classical_2.m4a | https://pixabay.com/music/modern-classical-classical-royal-english-music-545533/ |
-| music_classical_3.m4a | https://pixabay.com/music/modern-classical-classical-orchestral-strings-music-423202/ |
+| music_classical_1.m4a (純粋ピアノ) | https://pixabay.com/music/classical-piano-beethoven-moonlight-sonata-1-movement-op-27-nr-2-180627/ (Beethoven - Moonlight Sonata, 1st mvt., real classical recording by GregorQuendel) |
+| music_classical_2.m4a (純粋弦楽) | https://pixabay.com/music/chamber-music-string-quartet-elegance-537464/ |
+| music_classical_3.m4a (フルオーケストラ) | https://pixabay.com/music/classical-string-quartet-bach-violin-concerto-in-a-minor-1-movement-bwv-1041-allegro-190655/ (Bach - Violin Concerto in A minor, 1st mvt., real classical recording by GregorQuendel) |
 | music_edm_1.m4a | https://pixabay.com/music/future-bass-energy-edm-155588/ |
 | music_edm_2.m4a | https://pixabay.com/music/beats-edm-fun-153644/ |
 | music_edm_3.m4a | https://pixabay.com/music/electronic-edm-house-510192/ |
