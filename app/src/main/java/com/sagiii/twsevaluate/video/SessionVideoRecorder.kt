@@ -3,6 +3,7 @@ package com.sagiii.twsevaluate.video
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
+import android.view.Surface
 import androidx.camera.core.CameraSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FallbackStrategy
@@ -53,7 +54,11 @@ class SessionVideoRecorder(
                     )
                     .setTargetVideoEncodingBitRate(TARGET_VIDEO_BITRATE_BPS)
                     .build()
-                val capture = VideoCapture.withOutput(recorder)
+                // アプリはportrait固定なので、動画にもportraitの回転情報を明示的に付与する
+                // (Previewを持たないためCameraXが向きを自動推定できず、既定だと横向きになる)
+                val capture = VideoCapture.Builder(recorder)
+                    .setTargetRotation(Surface.ROTATION_0)
+                    .build()
                 videoCapture = capture
                 provider.unbindAll()
                 provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, capture)
