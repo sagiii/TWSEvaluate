@@ -24,11 +24,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FiberManualRecord
@@ -39,16 +40,14 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,6 +71,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.sagiii.twsevaluate.audio.AudioWaveformDecoder
 import com.sagiii.twsevaluate.audio.EvaluationSessionService
 import com.sagiii.twsevaluate.audio.ScoState
 import com.sagiii.twsevaluate.data.EvaluationMode
@@ -268,12 +268,15 @@ fun EvaluationSessionScreen(
         service?.setMonitorEnabled(monitorEnabled)
     }
 
+    var musicCurrentUri by remember { mutableStateOf<Uri?>(null) }
+
     val audioPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri != null) {
             val title = queryDisplayName(context, uri)
             musicTitle = title
+            musicCurrentUri = uri
             service?.playMusic(uri, title)
         }
     }
@@ -372,6 +375,7 @@ fun EvaluationSessionScreen(
                 EvaluationMode.MUSIC -> MusicModeContent(
                     isPlaying = musicIsPlaying,
                     title = musicTitle,
+                    currentUri = musicCurrentUri,
                     positionMs = musicPositionMs,
                     durationMs = musicDurationMs,
                     onPickFile = { audioPicker.launch(arrayOf("audio/*")) },
@@ -385,6 +389,7 @@ fun EvaluationSessionScreen(
                     onPlayBundledTrack = { track ->
                         val uri = Uri.parse("android.resource://${context.packageName}/${track.resId}")
                         musicTitle = track.title
+                        musicCurrentUri = uri
                         service?.playMusic(uri, track.title)
                     },
                 )
@@ -465,6 +470,7 @@ private fun EvaluationTopBar(photoPath: String, isRecordingVideo: Boolean, onClo
 private fun MusicModeContent(
     isPlaying: Boolean,
     title: String?,
+    currentUri: Uri?,
     positionMs: Int,
     durationMs: Int,
     onPickFile: () -> Unit,
@@ -472,28 +478,42 @@ private fun MusicModeContent(
     onSeek: (Int) -> Unit,
     onPlayBundledTrack: (BundledTrack) -> Unit,
 ) {
-    var selectedGenre by remember { mutableStateOf(BundledTracks.genreLabels.first().first) }
     Column {
-        Text("同梱の試聴用BGM(ジャンル別)", style = MaterialTheme.typography.titleSmall)
+        Text("同梱の試聴用BGM", style = MaterialTheme.typography.titleSmall)
         Spacer(modifier = Modifier.size(8.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(BundledTracks.genreLabels) { (genre, label) ->
-                FilterChip(
-                    selected = selectedGenre == genre,
-                    onClick = { selectedGenre = genre },
-                    label = { Text(label) },
-                )
-            }
-        }
-        Spacer(modifier = Modifier.size(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BundledTracks.tracksFor(selectedGenre).forEachIndexed { index, track ->
-                OutlinedButton(onClick = { onPlayBundledTrack(track) }) {
-                    Text("${index + 1}曲目")
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 260.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            for ((genre, label) in BundledTracks.genreLabels) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    BundledTracks.tracksFor(genre).forEach { track ->
+                        val isCurrent = title == track.title
+                        IconButton(
+                            onClick = { onPlayBundledTrack(track) },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(
+                                if (isCurrent && isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = track.title,
+                                tint = if (isCurrent) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                            )
+                        }
+                    }
                 }
             }
         }
-        Spacer(modifier = Modifier.size(16.dp))
+        Spacer(modifier = Modifier.size(12.dp))
         Button(onClick = onPickFile, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.FolderOpen, contentDescription = null)
             Spacer(modifier = Modifier.size(8.dp))
@@ -501,16 +521,20 @@ private fun MusicModeContent(
         }
         Spacer(modifier = Modifier.size(16.dp))
         Text(title ?: "曲が選択されていません", style = MaterialTheme.typography.bodyLarge)
-        Spacer(modifier = Modifier.size(12.dp))
-        if (title != null) {
+        Spacer(modifier = Modifier.size(8.dp))
+        if (title != null && currentUri != null) {
+            val context = LocalContext.current
+            val amplitudes by produceState(initialValue = FloatArray(0), currentUri) {
+                value = withContext(Dispatchers.Default) { AudioWaveformDecoder.extract(context, currentUri) }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onPlayPause) {
                     Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null)
                 }
-                Slider(
-                    value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat().coerceAtLeast(0f)),
-                    valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
-                    onValueChange = { onSeek(it.toInt()) },
+                WaveformSeekBar(
+                    amplitudes = amplitudes,
+                    progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
+                    onSeek = { fraction -> onSeek((durationMs * fraction).toInt()) },
                     modifier = Modifier.weight(1f),
                 )
             }
