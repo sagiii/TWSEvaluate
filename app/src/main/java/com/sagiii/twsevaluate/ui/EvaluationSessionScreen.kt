@@ -74,9 +74,18 @@ import com.sagiii.twsevaluate.data.EvaluationMode
 import com.sagiii.twsevaluate.data.ModeSpan
 import com.sagiii.twsevaluate.data.Session
 import com.sagiii.twsevaluate.data.SessionRepository
+import com.sagiii.twsevaluate.video.ConferenceClip
+import com.sagiii.twsevaluate.video.ConferenceVideoMuxer
 import com.sagiii.twsevaluate.video.SessionVideoRecorder
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** セッション内の1区間(動画セグメント or 会議録音)の絶対経過時間範囲。 */
+private class SegmentDraft(val path: String, val startMs: Long) {
+    var endMs: Long = startMs
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,8 +148,10 @@ fun EvaluationSessionScreen(
     var currentSegmentStartMs by remember { mutableStateOf(0L) }
     val modeTimeline = remember { mutableStateListOf<ModeSpan>() }
     val sessionStartElapsed = remember { SystemClock.elapsedRealtime() }
+    fun elapsedNow(): Long = SystemClock.elapsedRealtime() - sessionStartElapsed
     var conferenceSegmentIndex by remember { mutableStateOf(0) }
     val conferenceFiles = remember { mutableStateListOf<String>() }
+    val conferenceClipDrafts = remember { mutableListOf<SegmentDraft>() }
     var isRecordingConference by remember { mutableStateOf(false) }
     var monitorEnabled by remember { mutableStateOf(true) }
     var musicTitle by remember { mutableStateOf<String?>(null) }
@@ -149,16 +160,17 @@ fun EvaluationSessionScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val videoRecorder = remember(lifecycleOwner) { SessionVideoRecorder(context, lifecycleOwner) }
     var videoSegmentIndex by remember { mutableStateOf(0) }
-    val videoFiles = remember { mutableStateListOf<String>() }
+    val videoSegmentDrafts = remember { mutableListOf<SegmentDraft>() }
     var isRecordingVideo by remember { mutableStateOf(false) }
 
     fun startVideoSegment() {
         val file = File(repository.sessionDir(sessionId), "video_${videoSegmentIndex}.mp4")
         videoSegmentIndex++
         isRecordingVideo = true
+        val startMs = elapsedNow()
         videoRecorder.startNewSegment(file) { path, _ ->
             isRecordingVideo = false
-            if (path != null) videoFiles.add(path)
+            if (path != null) videoSegmentDrafts.add(SegmentDraft(path, startMs).apply { endMs = elapsedNow() })
         }
     }
 
@@ -188,8 +200,6 @@ fun EvaluationSessionScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    fun elapsedNow(): Long = SystemClock.elapsedRealtime() - sessionStartElapsed
-
     val scoState by produceState(initialValue = ScoState.DISCONNECTED, service) {
         service?.scoState?.collect { value = it }
     }
@@ -207,6 +217,7 @@ fun EvaluationSessionScreen(
                 service?.stopConferenceRecording()
                 service?.stopConferenceMode()
                 isRecordingConference = false
+                conferenceClipDrafts.lastOrNull()?.endMs = elapsedNow()
             }
         }
     }
@@ -230,6 +241,7 @@ fun EvaluationSessionScreen(
             val file = File(repository.sessionDir(sessionId), "conference_${conferenceSegmentIndex}.wav")
             service?.startConferenceRecording(file)
             conferenceFiles.add(file.absolutePath)
+            conferenceClipDrafts.add(SegmentDraft(file.absolutePath, elapsedNow()))
             conferenceSegmentIndex++
             isRecordingConference = true
         }
@@ -249,21 +261,44 @@ fun EvaluationSessionScreen(
     }
 
     val scope = rememberCoroutineScope()
+    var isFinishing by remember { mutableStateOf(false) }
 
     fun finish() {
+        if (isFinishing) return
+        isFinishing = true
         val now = elapsedNow()
         modeTimeline.add(ModeSpan(selectedMode, currentSegmentStartMs, now))
         stopCurrentModeSideEffects()
         service?.stopMusic()
-        // 最後の動画セグメントのファイルが確定するのを待ってから保存する
+        // 最後の動画セグメントのファイルが確定するのを待ってから、
+        // 会議録音と重なる区間だけ動画の音声トラックを差し替えて保存する
         videoRecorder.stopFinal {
             scope.launch {
+                val conferenceClips = conferenceClipDrafts.map { ConferenceClip(it.path, it.startMs, it.endMs) }
+                val finalVideoPaths = withContext(Dispatchers.Default) {
+                    videoSegmentDrafts.map { segment ->
+                        val mixedFile = File(File(segment.path).parentFile, "mixed_${File(segment.path).name}")
+                        val mixed = ConferenceVideoMuxer.mux(
+                            sourceVideo = File(segment.path),
+                            outputVideo = mixedFile,
+                            segmentStartMs = segment.startMs,
+                            segmentEndMs = segment.endMs,
+                            conferenceClips = conferenceClips,
+                        )
+                        if (mixed) {
+                            File(segment.path).delete()
+                            mixedFile.absolutePath
+                        } else {
+                            segment.path
+                        }
+                    }
+                }
                 repository.save(
                     Session(
                         id = sessionId,
                         createdAtEpochMs = System.currentTimeMillis() - now,
                         photoPath = photoPath,
-                        videoPaths = videoFiles.toList(),
+                        videoPaths = finalVideoPaths,
                         conferenceAudioPaths = conferenceFiles.toList(),
                         modeTimeline = modeTimeline.toList(),
                     ),
