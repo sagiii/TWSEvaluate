@@ -1,6 +1,5 @@
 package com.sagiii.twsevaluate.ui
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,6 +41,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.sagiii.twsevaluate.data.EvaluationMode
 import com.sagiii.twsevaluate.data.Session
+import com.sagiii.twsevaluate.util.PhotoBitmapLoader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -138,7 +138,7 @@ private fun SessionRow(session: Session, onClick: () -> Unit) {
 private fun Thumbnail(photoPath: String) {
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, photoPath) {
         value = withContext(Dispatchers.IO) {
-            runCatching { BitmapFactory.decodeFile(photoPath)?.asImageBitmap() }.getOrNull()
+            runCatching { PhotoBitmapLoader.load(photoPath, reqSize = 160)?.asImageBitmap() }.getOrNull()
         }
     }
     Box(

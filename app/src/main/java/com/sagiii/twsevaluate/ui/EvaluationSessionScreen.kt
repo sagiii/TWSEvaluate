@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -77,6 +76,7 @@ import com.sagiii.twsevaluate.data.SessionRepository
 import com.sagiii.twsevaluate.video.ConferenceClip
 import com.sagiii.twsevaluate.video.ConferenceVideoMuxer
 import com.sagiii.twsevaluate.video.SessionVideoRecorder
+import com.sagiii.twsevaluate.util.PhotoBitmapLoader
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -334,7 +334,19 @@ fun EvaluationSessionScreen(
                 ) { Text("会議") }
             }
 
-            Spacer(modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.size(16.dp))
+
+            if (isRecordingVideo) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    LiveCameraPreview(
+                        videoRecorder = videoRecorder,
+                        modifier = Modifier
+                            .size(width = 96.dp, height = 128.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                    )
+                }
+                Spacer(modifier = Modifier.size(16.dp))
+            }
 
             if (!permissionsGranted) {
                 Text("録音・Bluetooth・通知の権限が必要です")
@@ -367,6 +379,21 @@ fun EvaluationSessionScreen(
 }
 
 @Composable
+private fun LiveCameraPreview(videoRecorder: SessionVideoRecorder, modifier: Modifier = Modifier) {
+    androidx.compose.ui.viewinterop.AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            val previewView = androidx.camera.view.PreviewView(ctx).apply {
+                scaleType = androidx.camera.view.PreviewView.ScaleType.FILL_CENTER
+            }
+            videoRecorder.setPreviewSurfaceProvider(previewView.surfaceProvider)
+            previewView
+        },
+        onRelease = { videoRecorder.setPreviewSurfaceProvider(null) },
+    )
+}
+
+@Composable
 private fun EvaluationTopBar(photoPath: String, isRecordingVideo: Boolean, onClose: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -375,7 +402,7 @@ private fun EvaluationTopBar(photoPath: String, isRecordingVideo: Boolean, onClo
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val bitmap = remember(photoPath) {
-                runCatching { BitmapFactory.decodeFile(photoPath)?.asImageBitmap() }.getOrNull()
+                runCatching { PhotoBitmapLoader.load(photoPath, reqSize = 160)?.asImageBitmap() }.getOrNull()
             }
             Box(
                 modifier = Modifier

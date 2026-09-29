@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import android.view.Surface
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.FileOutputOptions
@@ -33,8 +34,16 @@ class SessionVideoRecorder(
 ) {
     private var cameraProvider: ProcessCameraProvider? = null
     private var videoCapture: VideoCapture<Recorder>? = null
+    private var preview: Preview? = null
     private var activeRecording: Recording? = null
     private var onStoppedCallback: (() -> Unit)? = null
+    private var pendingSurfaceProvider: Preview.SurfaceProvider? = null
+
+    /** 録画中とわかるよう画面に出すライブプレビューの描画先を設定する。 */
+    fun setPreviewSurfaceProvider(surfaceProvider: Preview.SurfaceProvider?) {
+        pendingSurfaceProvider = surfaceProvider
+        preview?.surfaceProvider = surfaceProvider
+    }
 
     @SuppressLint("MissingPermission")
     fun startNewSegment(outputFile: File, onFinalized: (path: String?, success: Boolean) -> Unit) {
@@ -59,9 +68,14 @@ class SessionVideoRecorder(
                 val capture = VideoCapture.Builder(recorder)
                     .setTargetRotation(Surface.ROTATION_0)
                     .build()
+                val previewUseCase = Preview.Builder()
+                    .setTargetRotation(Surface.ROTATION_0)
+                    .build()
+                    .apply { surfaceProvider = pendingSurfaceProvider }
                 videoCapture = capture
+                preview = previewUseCase
                 provider.unbindAll()
-                provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, capture)
+                provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, capture, previewUseCase)
                 beginRecording(outputFile, onFinalized)
             } catch (exc: Exception) {
                 Log.e(TAG, "カメラのバインドに失敗しました", exc)
@@ -93,6 +107,7 @@ class SessionVideoRecorder(
         cameraProvider?.unbindAll()
         cameraProvider = null
         videoCapture = null
+        preview = null
     }
 
     /**
@@ -106,6 +121,7 @@ class SessionVideoRecorder(
             cameraProvider?.unbindAll()
             cameraProvider = null
             videoCapture = null
+            preview = null
             onStopped()
             return
         }
@@ -114,6 +130,7 @@ class SessionVideoRecorder(
         cameraProvider?.unbindAll()
         cameraProvider = null
         videoCapture = null
+        preview = null
     }
 
     companion object {

@@ -1,7 +1,6 @@
 package com.sagiii.twsevaluate.ui
 
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -54,6 +53,7 @@ import com.sagiii.twsevaluate.audio.WaveformExtractor
 import com.sagiii.twsevaluate.data.EvaluationMode
 import com.sagiii.twsevaluate.data.ModeSpan
 import com.sagiii.twsevaluate.data.Session
+import com.sagiii.twsevaluate.util.PhotoBitmapLoader
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -159,7 +159,7 @@ fun SessionDetailScreen(
         ) {
             item {
                 val bitmap = remember(session.photoPath) {
-                    runCatching { BitmapFactory.decodeFile(session.photoPath)?.asImageBitmap() }.getOrNull()
+                    runCatching { PhotoBitmapLoader.load(session.photoPath, reqSize = 720)?.asImageBitmap() }.getOrNull()
                 }
                 bitmap?.let {
                     Image(
