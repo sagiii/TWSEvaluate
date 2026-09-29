@@ -3,9 +3,9 @@ package com.sagiii.twsevaluate.music
 import com.sagiii.twsevaluate.R
 
 /**
- * 同梱の試聴用BGM。実在の楽曲データは一切使用しておらず、正弦波/ノコギリ波/
- * ノイズとKarplus-Strong弦モデルだけで手続き的に合成したオリジナル素材
- * (著作権上クリーン)。10ジャンル x 3曲。
+ * 同梱の試聴用BGM。Pixabay Music(https://pixabay.com/music/)の楽曲を
+ * Pixabay Content License(無料・クレジット表記不要・改変可)の下で使用。
+ * 出典一覧はdocs/MUSIC_CREDITS.md参照。10ジャンル x 3曲。
  */
 data class BundledTrack(val genre: String, val genreLabel: String, val title: String, val resId: Int)
 
