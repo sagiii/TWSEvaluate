@@ -182,22 +182,22 @@ fun EvaluationSessionScreen(
         }
     }
 
-    LaunchedEffect(permissionsGranted) {
-        if (permissionsGranted) startVideoSegment()
-    }
-
+    // 動画は会議モード中のみ録画する(音楽モードの録画は無音になるだけで冗長なため)。
+    // switchTo()で会議モードに入るときに開始し、抜けるときに停止する。
     DisposableEffect(lifecycleOwner) {
         var isFirstStart = true
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
-                    videoRecorder.releaseCamera()
-                    isRecordingVideo = false
+                    if (isRecordingVideo) {
+                        videoRecorder.releaseCamera()
+                        isRecordingVideo = false
+                    }
                 }
                 Lifecycle.Event.ON_START -> {
                     if (isFirstStart) {
                         isFirstStart = false
-                    } else if (permissionsGranted && !isRecordingVideo) {
+                    } else if (selectedMode == EvaluationMode.CONFERENCE && !isRecordingVideo) {
                         startVideoSegment()
                     }
                 }
@@ -244,12 +244,20 @@ fun EvaluationSessionScreen(
         if (newMode == selectedMode || service == null) return
         val now = elapsedNow()
         modeTimeline.add(ModeSpan(selectedMode, currentSegmentStartMs, now))
+        val leavingConference = selectedMode == EvaluationMode.CONFERENCE
         stopCurrentModeSideEffects()
+        if (leavingConference) {
+            // 会議モードを抜けたら録画も終了する(会議区間=動画区間になるようにする)
+            videoRecorder.stopFinal { }
+        }
         selectedMode = newMode
         currentSegmentStartMs = now
         when (newMode) {
             EvaluationMode.MUSIC -> service?.resumeMusic()
-            EvaluationMode.CONFERENCE -> service?.startConferenceMode()
+            EvaluationMode.CONFERENCE -> {
+                service?.startConferenceMode()
+                startVideoSegment()
+            }
         }
     }
 

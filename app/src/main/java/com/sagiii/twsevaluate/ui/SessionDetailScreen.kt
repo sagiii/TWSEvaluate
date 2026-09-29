@@ -3,6 +3,7 @@ package com.sagiii.twsevaluate.ui
 import android.content.Intent
 import android.media.MediaPlayer
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
@@ -175,33 +177,23 @@ fun SessionDetailScreen(
                 Spacer(modifier = Modifier.size(16.dp))
             }
 
-            if (session.videoPaths.isNotEmpty()) {
-                item { Text("録画", style = MaterialTheme.typography.titleMedium) }
-                items(session.videoPaths) { path ->
-                    Button(
-                        onClick = { playVideo(path) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    ) {
-                        Icon(Icons.Default.Videocam, contentDescription = null)
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text("録画を再生 (${File(path).name})")
-                    }
-                }
-                item { Spacer(modifier = Modifier.size(16.dp)) }
-            }
-
-            if (session.conferenceAudioPaths.isNotEmpty()) {
-                item { Text("会議録音", style = MaterialTheme.typography.titleMedium) }
-                items(session.conferenceAudioPaths) { path ->
-                    val isCurrent = playingPath == path
-                    ConferenceAudioRow(
-                        path = path,
-                        isCurrent = isCurrent,
-                        isPlaying = isCurrent && isPlaying,
-                        positionMs = if (isCurrent) positionMs else 0,
-                        durationMs = if (isCurrent) durationMs else 0,
-                        onTogglePlayback = { togglePlayback(path) },
-                        onSeek = { fraction -> seekTrack(path, fraction) },
+            val takeCount = maxOf(session.videoPaths.size, session.conferenceAudioPaths.size)
+            if (takeCount > 0) {
+                item { Text("会議テイク", style = MaterialTheme.typography.titleMedium) }
+                items(takeCount) { i ->
+                    val videoPath = session.videoPaths.getOrNull(i)
+                    val audioPath = session.conferenceAudioPaths.getOrNull(i)
+                    ConferenceTakeCard(
+                        index = i,
+                        videoPath = videoPath,
+                        audioPath = audioPath,
+                        isAudioCurrent = audioPath != null && playingPath == audioPath,
+                        isPlaying = isPlaying,
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        onPlayVideo = { videoPath?.let { playVideo(it) } },
+                        onToggleAudio = { audioPath?.let { togglePlayback(it) } },
+                        onSeekAudio = { fraction -> audioPath?.let { seekTrack(it, fraction) } },
                     )
                 }
                 item { Spacer(modifier = Modifier.size(16.dp)) }
@@ -246,42 +238,65 @@ fun SessionDetailScreen(
 }
 
 @Composable
-private fun ConferenceAudioRow(
-    path: String,
-    isCurrent: Boolean,
+private fun ConferenceTakeCard(
+    index: Int,
+    videoPath: String?,
+    audioPath: String?,
+    isAudioCurrent: Boolean,
     isPlaying: Boolean,
     positionMs: Int,
     durationMs: Int,
-    onTogglePlayback: () -> Unit,
-    onSeek: (Float) -> Unit,
+    onPlayVideo: () -> Unit,
+    onToggleAudio: () -> Unit,
+    onSeekAudio: (Float) -> Unit,
 ) {
-    val amplitudes by produceState(initialValue = FloatArray(0), path) {
-        value = withContext(Dispatchers.IO) { WaveformExtractor.extract(File(path)) }
-    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(12.dp),
+    ) {
+        Text("会議 ${index + 1}", style = MaterialTheme.typography.titleSmall)
+        Spacer(modifier = Modifier.size(8.dp))
 
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Text(File(path).name, style = MaterialTheme.typography.bodyMedium)
-        Spacer(modifier = Modifier.size(4.dp))
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            IconButton(onClick = onTogglePlayback) {
-                Icon(
-                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "一時停止" else "再生",
+        if (videoPath != null) {
+            Button(onClick = onPlayVideo, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Videocam, contentDescription = null)
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("録画を再生")
+            }
+            Spacer(modifier = Modifier.size(8.dp))
+        }
+
+        if (audioPath != null) {
+            val amplitudes by produceState(initialValue = FloatArray(0), audioPath) {
+                value = withContext(Dispatchers.IO) { WaveformExtractor.extract(File(audioPath)) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onToggleAudio) {
+                    Icon(
+                        if (isAudioCurrent && isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isAudioCurrent && isPlaying) "一時停止" else "再生",
+                    )
+                }
+                WaveformSeekBar(
+                    amplitudes = amplitudes,
+                    progress = if (isAudioCurrent && durationMs > 0) positionMs.toFloat() / durationMs else 0f,
+                    onSeek = onSeekAudio,
+                    modifier = Modifier.weight(1f),
                 )
             }
-            WaveformSeekBar(
-                amplitudes = amplitudes,
-                progress = if (isCurrent && durationMs > 0) positionMs.toFloat() / durationMs else 0f,
-                onSeek = onSeek,
-                modifier = Modifier.weight(1f),
+            val shownPosition = if (isAudioCurrent) positionMs.toLong() else 0L
+            val shownDuration = if (isAudioCurrent) durationMs.toLong() else 0L
+            Text(
+                "${formatMmSs(shownPosition)} / ${formatMmSs(shownDuration)}",
+                style = MaterialTheme.typography.labelSmall,
             )
+        } else {
+            Text("(この区間の録音はありません)", style = MaterialTheme.typography.labelSmall)
         }
-        val shownPosition = if (isCurrent) positionMs.toLong() else 0L
-        val shownDuration = if (isCurrent) durationMs.toLong() else 0L
-        Text(
-            "${formatMmSs(shownPosition)} / ${formatMmSs(shownDuration)}",
-            style = MaterialTheme.typography.labelSmall,
-        )
     }
 }
 
