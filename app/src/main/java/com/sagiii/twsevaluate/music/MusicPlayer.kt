@@ -55,7 +55,10 @@ class MusicPlayer(private val context: Context) {
     }
 
     fun seekTo(positionMs: Int) {
-        mediaPlayer?.seekTo(positionMs)
+        // 既定のseekTo(int)は直前の同期点にスナップする粗いシークで、圧縮音源
+        // (AAC/MP3)だとタップした位置とずれて聞こえる。SEEK_CLOSESTでフレーム
+        // 精度のシークにする。
+        mediaPlayer?.seekTo(positionMs.toLong(), MediaPlayer.SEEK_CLOSEST)
     }
 
     fun currentPositionMs(): Int = mediaPlayer?.currentPosition ?: 0

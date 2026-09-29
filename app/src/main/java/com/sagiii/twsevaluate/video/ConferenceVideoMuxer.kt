@@ -170,7 +170,15 @@ object ConferenceVideoMuxer {
         val resolvedVideoFormat = requireNotNull(videoFormat) { "動画トラックが見つかりません: ${sourceVideo.name}" }
         extractor.selectTrack(videoTrackIndex)
 
+        // MediaMuxer#addTrack()はMediaFormatのKEY_ROTATIONを自動的には引き継がないため、
+        // 明示的にsetOrientationHint()で回転情報を移し替える(これを忘れると縦で撮った
+        // 動画が横向きで保存されてしまう)。
+        val rotationDegrees = runCatching {
+            resolvedVideoFormat.getInteger(MediaFormat.KEY_ROTATION)
+        }.getOrDefault(0)
+
         val muxer = MediaMuxer(outputVideo.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        if (rotationDegrees != 0) muxer.setOrientationHint(rotationDegrees)
         val muxerVideoTrack = muxer.addTrack(resolvedVideoFormat)
         val muxerAudioTrack = muxer.addTrack(audioFormat)
         muxer.start()

@@ -130,7 +130,7 @@ fun SessionDetailScreen(
     fun seekTrack(path: String, fraction: Float) {
         if (playingPath != path) loadTrack(path, autoPlay = false)
         val target = (durationMs * fraction).toInt()
-        mediaPlayer?.seekTo(target)
+        mediaPlayer?.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
         positionMs = target
     }
 
